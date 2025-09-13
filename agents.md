@@ -168,6 +168,7 @@ assert MVTEC_ROOT.exists(), "MVTec root not found after anomalib download."
 - Python セル：`black`（line length 88）/ `ruff` 推奨（任意）。
 - 変数命名：`snake_case`、関数は docstring（要約一行＋引数/戻り値）。
 - ノート構成：章立て（Header → Data → Methods → Results → Save JSON/Artifacts）。
+- コメント：関数には使い方がわかるように、引数、返り値の型や、必須の情報（例：データフレームであれば期待されるカラム名など）を日本語で記載
 
 ---
 
@@ -190,6 +191,7 @@ assert MVTEC_ROOT.exists(), "MVTec root not found after anomalib download."
 ## 10. For Agents（実行時の注意）
 
 - `AGENTS.md` を最初に読み、**anomalib によるデータ取得**と **リーク防止ルール**を順守すること。
+- 返答、およびコメントは日本語とすること。
 - `assets/fixed_pipeline.json` が存在しない場合は **02 を実行せず停止**し、01 の実行を促すこと。
 - `threshold.source` が `dev_*_test` 以外なら **警告**（リーク疑い）。
 
