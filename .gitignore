@@ -5,3 +5,4 @@ datasets/
 pyproject.toml
 __pycache__/
 .vscode/
+.gitignore
