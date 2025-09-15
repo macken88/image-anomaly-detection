@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -31,8 +31,9 @@ def _flatten_global(feat: torch.Tensor) -> torch.Tensor:
 
 def fit_mahalanobis(
     train_loader: torch.utils.data.DataLoader,
-    backbone: str,
+    backbone: Union[str, nn.Module],
     *,
+    feature_node: Optional[str] = None,
     cov_estimator: str = "ledoit_wolf",
     reg_eps: float = 0.0,
     device: Optional[torch.device] = None,
@@ -44,7 +45,8 @@ def fit_mahalanobis(
 
     引数:
         train_loader: 学習用の `DataLoader`（画像テンソルが必要）。
-        backbone: `torchvision.models` のモデル名（例: "resnet18"）。
+        backbone: `torchvision.models` のモデル名（例: "resnet18"）または `nn.Module` 本体。
+        feature_node: 特徴抽出に用いる FX ノード名（指定時はそのノードの出力を使用）。
         cov_estimator: 共分散推定手法。"ledoit_wolf" または "empirical"。
         reg_eps: 共分散の対角に加える正則化項（数値不安定性の緩和）。
         device: 実行デバイス。省略時は自動選択（CUDA 優先）。
@@ -59,9 +61,37 @@ def fit_mahalanobis(
 
     device = default_device(device)
 
-    # バックボーンから最終層手前までを特徴抽出器として利用（ResNet 系で有効）
-    model = models.__dict__[backbone](pretrained=True)
-    feature_extractor = nn.Sequential(*list(model.children())[:-1]).to(device).eval()
+    # モデルの解決（文字列 or 既存モデル）
+    if isinstance(backbone, nn.Module):
+        model = backbone.eval()
+    else:
+        try:
+            # 新API（torchvision>=0.13）
+            from torchvision.models import get_model, get_model_weights  # type: ignore
+
+            weights = get_model_weights(backbone).DEFAULT  # type: ignore[attr-defined]
+            model = get_model(backbone, weights=weights).eval()
+        except Exception:
+            # フォールバック：旧API
+            model = models.__dict__[backbone](pretrained=True).eval()
+
+    # 特徴抽出器の構築
+    if feature_node:
+        from torchvision.models.feature_extraction import create_feature_extractor
+
+        class _FeatureNodeExtractor(nn.Module):
+            def __init__(self, m: nn.Module, node: str) -> None:
+                super().__init__()
+                self.fx = create_feature_extractor(m, return_nodes={node: "feat"})
+
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                out = self.fx(x)
+                return out["feat"]
+
+        feature_extractor = _FeatureNodeExtractor(model, feature_node).to(device).eval()
+    else:
+        # 最後の手前の出力を使用（ResNet 系など従来挙動）
+        feature_extractor = nn.Sequential(*list(model.children())[:-1]).to(device).eval()
 
     feats_np: List[np.ndarray] = []
     with torch.no_grad():
@@ -91,9 +121,10 @@ def fit_mahalanobis(
         "precision": precision,
         "feature_extractor": feature_extractor,
         "meta": {
-            "backbone": backbone,
+            "backbone": (backbone if isinstance(backbone, str) else type(model).__name__),
             "cov_estimator": cov_estimator,
             "reg_eps": reg_eps,
+            "feature_node": feature_node,
         },
     }
 
