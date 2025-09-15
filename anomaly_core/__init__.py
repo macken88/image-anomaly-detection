@@ -376,9 +376,13 @@ def fit_padim(
         Si = Si + reg_eps * eye_d  # 正則化（PaDiM の安定化）
         cov[i] = torch.from_numpy(Si).to(torch.float32)
 
+    # 共分散の（擬似）逆行列を事前計算して返す
+    inv_cov = torch.linalg.pinv(cov)  # [HW, d, d] (CPU)
+
     return {
         "mean": mean,  # [HW, d] (CPU)
-        "cov": cov,    # [HW, d, d] (CPU)
+        "cov": cov,        # [HW, d, d] (CPU)
+        "inv_cov": inv_cov,  # [HW, d, d] (CPU)
         "idx": idx,    # [d]
         "feature_extractor": feature_extractor,
         "meta": {"backbone": backbone, "layers": layers, "d": d},
@@ -403,7 +407,8 @@ def padim_heatmap(
     device = next(feature_extractor.parameters()).device
 
     mean: torch.Tensor = model_state["mean"]  # type: ignore
-    cov: torch.Tensor = model_state["cov"]  # type: ignore
+    # 逆共分散は学習時に事前計算して受け取る
+    inv_cov: torch.Tensor = model_state["inv_cov"]  # type: ignore
     idx: torch.Tensor = model_state["idx"]  # type: ignore
 
     feature_extractor.eval()
@@ -415,9 +420,9 @@ def padim_heatmap(
     n, d, h, w = embedding.shape
     embedding = embedding.permute(0, 2, 3, 1).reshape(n, h * w, d)  # [N, HW, d]
 
-    # 位置ごとの逆共分散（まとめて擬似逆行列）
-    inv_cov = torch.linalg.pinv(cov.to(device))  # [HW, d, d]
-    mean = mean.to(device)                        # [HW, d]
+    # 位置ごとの逆共分散（事前計算済み）
+    inv_cov = inv_cov.to(device)  # [HW, d, d]
+    mean = mean.to(device)        # [HW, d]
 
     maps: List[torch.Tensor] = []
     for emb in embedding:  # emb: [HW, d]
