@@ -1,8 +1,0 @@
-MVtec_dataset/
-datasets/
-.venv/
-.python-version
-pyproject.toml
-__pycache__/
-.vscode/
-.gitignore
