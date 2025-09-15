@@ -1,0 +1,27 @@
+{
+  "common": {
+    "image_size": 256,
+    "seeds": [
+      0,
+      1,
+      2
+    ]
+  },
+  "threshold": {
+    "method": "percentile",
+    "percentile": 99
+  },
+  "mahalanobis": {
+    "backbone": "efficientnet_b0"
+  },
+  "padim": {
+    "backbone": "efficientnet_b0",
+    "layers": [
+      "features.7.0.block.0",
+      "features.7.0.block.1",
+      "features.7.0.block.2",
+      "features.7.0.block.3"
+    ],
+    "d": 100
+  }
+}

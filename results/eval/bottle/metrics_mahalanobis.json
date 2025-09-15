@@ -1,0 +1,13 @@
+{
+  "category": "bottle",
+  "method": "mahalanobis",
+  "backbone": "efficientnet_b0",
+  "timestamp": "2025-09-14T13:55:01.113838+00:00",
+  "metrics": {
+    "threshold": 14.133860893249512,
+    "auroc": 0.9984126984126984,
+    "auprc": 0.999500031494079,
+    "f1": 0.863013698630137,
+    "acc": 0.7590361445783133
+  }
+}
