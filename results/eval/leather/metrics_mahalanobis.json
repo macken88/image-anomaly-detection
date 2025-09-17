@@ -1,0 +1,13 @@
+{
+  "category": "leather",
+  "method": "mahalanobis",
+  "backbone": "efficientnet_b0",
+  "timestamp": "2025-09-14T13:50:59.687920+00:00",
+  "metrics": {
+    "threshold": 15.063018074035645,
+    "auroc": 0.9966032608695652,
+    "auprc": 0.9988495692956544,
+    "f1": 0.8518518518518519,
+    "acc": 0.7419354838709677
+  }
+}

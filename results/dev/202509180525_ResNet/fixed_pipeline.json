@@ -1,0 +1,26 @@
+{
+  "common": {
+    "image_size": 256,
+    "seeds": [
+      0,
+      1,
+      2
+    ]
+  },
+  "threshold": {
+    "method": "percentile",
+    "percentile": 99
+  },
+  "mahalanobis": {
+    "backbone": "ResNet"
+  },
+  "padim": {
+    "backbone": "ResNet",
+    "layers": [
+      "layer1.1.relu_1",
+      "layer2.1.relu_1",
+      "layer3.1.relu_1"
+    ],
+    "d": 100
+  }
+}

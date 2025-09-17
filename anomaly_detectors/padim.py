@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import models
 
 from .utils import default_device
 
@@ -29,21 +28,20 @@ def _collect_spatial_feats(feats: List[torch.Tensor]) -> List[torch.Tensor]:
 
 
 class _PadimFeatureExtractor(nn.Module):
-    """PaDiM 用の中間特徴抽出器（バックボーン非依存の薄いラッパ）。"""
+    """PaDiM 用の中間特徴抽出器（任意の `nn.Module` を受け取るラッパ）。"""
 
-    def __init__(self, backbone: str, layers: Optional[List[str]] = None) -> None:
+    def __init__(self, model: nn.Module, layers: Optional[List[str]] = None) -> None:
         super().__init__()
         from torchvision.models.feature_extraction import (
             create_feature_extractor,
             get_graph_node_names,
         )
 
-        self.backbone = backbone
-        self.model = models.__dict__[backbone](pretrained=True)
-        self.model.eval()
+        self.model = model.eval()
+        self.backbone_name = type(self.model).__name__
         _, eval_nodes = get_graph_node_names(self.model)
         self._eval_nodes = set(eval_nodes)
-        resolved = self._resolve_layers(self.model, backbone, layers, eval_nodes)
+        resolved = self._resolve_layers(self.model, self.backbone_name, layers, eval_nodes)
 
         self.return_order = list(resolved)
         self.extractor = create_feature_extractor(
@@ -72,14 +70,14 @@ class _PadimFeatureExtractor(nn.Module):
     def _resolve_layers(
         self,
         model: nn.Module,
-        backbone: str,
+        backbone_name: Optional[str],
         layers: Optional[List[str]],
         eval_nodes: List[str],
     ) -> List[str]:
         if layers and all(l in eval_nodes for l in layers):
             return layers
 
-        name = backbone.lower()
+        name = (backbone_name or type(model).__name__).lower()
         if "resnet" in name:
             cand = [l for l in ["layer1", "layer2", "layer3"] if l in eval_nodes]
             if cand:
@@ -135,7 +133,7 @@ class _PadimFeatureExtractor(nn.Module):
 
 def fit_padim(
     train_loader: torch.utils.data.DataLoader,
-    backbone: str,
+    model: nn.Module,
     *,
     layers: Optional[List[str]] = None,
     d: int = 100,
@@ -145,7 +143,7 @@ def fit_padim(
     """PaDiM の統計量（位置ごとの平均・共分散）を学習データから推定する。"""
 
     device = default_device(device)
-    feature_extractor = _PadimFeatureExtractor(backbone, layers).to(device).eval()
+    feature_extractor = _PadimFeatureExtractor(model, layers).to(device).eval()
 
     embedding_list: List[torch.Tensor] = []
     with torch.no_grad():
@@ -185,7 +183,7 @@ def fit_padim(
         "inv_cov": inv_cov,
         "idx": idx,
         "feature_extractor": feature_extractor,
-        "meta": {"backbone": backbone, "layers": layers, "d": d},
+        "meta": {"backbone": type(feature_extractor.model).__name__, "layers": layers, "d": d},
     }
 
 
