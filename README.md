@@ -76,7 +76,7 @@ pip install jupyterlab  # または: jupyter
 2. 「スイープ設定と実行」セルで `TARGET_BACKBONES` と `TARGET_CATEGORIES` を編集。
 3. 実行すると以下を自動で行います。
    - K-Fold CV（train/good のみ）→ foldごとにヒストグラム保存。
-   - Out Of Fold（OOF）の正常スコアから z 空間で 99% 分位点（z_threshold）を決定。
+   - Out Of Fold（OOF）の異常スコアから z 空間で 99% 分位点（z_threshold）を決定。
    - 全学習データ（train/good）で最終モデルをfitし、testを評価（AUC/F1）。
    - PaDiM は test のヒートマップから「good×2 + 異常×3」を抽出し、原画像と並置PNGを保存。
    - すべての結果を `results/dev/<timestamp>/...` に保存し、`sweep_summary.csv` を生成。
@@ -119,6 +119,4 @@ results/dev/<timestamp>/
   - `DEFAULT_BATCH_SIZE` や PaDiM の `d` を下げてください。`NUM_WORKERS` も環境に合わせて調整可能です。
 
 
-## 参考文献
-1) Modeling the Distribution of Normal Data in Pre-Trained Deep Features for Anomaly Detection [arXiv:2005.14140] : https://arxiv.org/abs/2005.14140
-2) PaDiM: a Patch Distribution Modeling Framework for Anomaly Detection and Localization [arXiv:2011.08785] : https://arxiv.org/abs/2011.08785
+
