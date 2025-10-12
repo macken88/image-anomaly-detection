@@ -2,14 +2,15 @@
 
 本リポジトリは、製造業などの外観検査を想定した画像異常検知実験を実施したポートフォリオです。複数バックボーン × 複数カテゴリ × 複数手法（Mahalanobis / PaDiM）のスイープ実験を実行しました。
 
-概要:
-- `experiment.ipynb` 1本でデータ準備→CV→OOF z閾値→最終モデル→レポート用集計まで完了。
-- 結果は `results/dev/<timestamp>/<backbone>/<category>/<method>/` に時刻付きで保存。
-- PaDiM ヒートマップは各カテゴリから「good×2 + 異常×3」を原画像と横並びでPNG保存。
-- バックボーン比較用のスロープチャート等、簡易可視化も内蔵。
+## 概要
+- `experiment.ipynb`：実験の実行と結果の保存を行うノートブック。
+- 結果は `results/<timestamp>/<backbone>/<category>/<method>/` に保存。
+- PaDiM ヒートマップは各カテゴリから「good×10 + 異常×10」を原画像と横並びでPNG保存。
+- バックボーン比較用のスロープチャート等、結果の可視化も実行。
+- `REPORT.md`：実験レポート（目的、手法、結果、考察、改善案など）。
 
 
-**目次**
+## 目次
 - リポジトリ構成
 - セットアップ（uv / pip）
 - データ準備（anomalib）
@@ -25,13 +26,13 @@
 ```
 .
 ├── experiment.ipynb                # 実験実行用ノートブック
-├── anomaly_detectors/              # 手法の実装（Mahalanobis / PaDiM など）
-├── datasets/MVTecAD/               # 例：既存のMVTec配置（任意、git管理外推奨）
+├── anomaly_detectors/              # 手法の実装（Mahalanobis / PaDiM ）
+├── datasets/MVTecAD/               # 例：既存のMVTec配置（任意、git管理外）
 └── results/                        # 実行結果（時刻別に保存）
 ```
 
 
-## セットアップ（uv / pip）
+## セットアップ
 
 前提:
 - Python `>= 3.12`
@@ -40,28 +41,41 @@
 ### 方法A: uv（推奨）
 
 ```
-# uv が未インストールの場合（任意）
-pip install uv
-
 # 仮想環境の作成と依存解決（.venv を自動管理）
 uv sync
 
 # Jupyter を起動（必要に応じて）
 uvx jupyter lab  # または: uvx jupyter notebook
 ```
+uv sync が pyproject.toml を参照して依存をインストールします。
 
-### 方法B: pip / venv
+### 方法B: venv + pip
 
 ```
+# 仮想環境作成
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# 有効化（Unix / macOS）
+source .venv/bin/activate
+
+# 有効化（Windows PowerShell）
+.venv\Scripts\Activate.ps1
+
+# pip 更新
 python -m pip install -U pip
+
+# パッケージインストール（プロジェクト依存）
 pip install -e .           # pyproject.toml の依存を解決
 
-# Jupyter が未導入なら
-pip install jupyterlab  # または: jupyter
-```
+# PyTorch（GPU利用時は環境に合ったビルドを選択）
+pip install torch torchvision
 
+# その他依存（プロジェクトで指定のバージョンを使用）
+pip install anomalib matplotlib nbformat numpy==1.26.* pandas<2.3 plotly umap-learn scikit-learn pillow
+
+# Jupyter が必要なら
+pip install jupyterlab   # または: pip install jupyter
+```
 
 ## データ準備（anomalib）
 
@@ -78,7 +92,7 @@ pip install jupyterlab  # または: jupyter
    - K-Fold CV（train/good のみ）→ foldごとにヒストグラム保存。
    - Out Of Fold（OOF）の異常スコアから z 空間で 99% 分位点（z_threshold）を決定。
    - 全学習データ（train/good）で最終モデルをfitし、testを評価（AUC/F1）。
-   - PaDiM は test のヒートマップから「good×2 + 異常×3」を抽出し、原画像と並置PNGを保存。
+   - PaDiM は、異常スコアのヒートマップも作成し、PNGを保存。
    - すべての結果を `results/dev/<timestamp>/...` に保存し、`sweep_summary.csv` を生成。
    - バックボーン間の比較のため、スロープグラフを表示。
 
@@ -86,7 +100,7 @@ pip install jupyterlab  # または: jupyter
 ## 出力物（フォルダ構成・ファイル）
 
 ```
-results/dev/<timestamp>/
+results/<timestamp>/
 ├── sweep_summary.csv                         # バックボーン×カテゴリ×手法の集計（AUC/F1, z_threshold 等）
 └── <backbone>/<category>/<method>/
     ├── summary.csv                           # CV 各foldのメトリクス
@@ -96,7 +110,7 @@ results/dev/<timestamp>/
 
 ## 実装の要点
 
-- Mahalanobis：学習データの特徴埋め込み（平均・共分散）から精度行列を推定（Ledoit–Wolf など）し、距離をスコア化。
+- Mahalanobis距離法：学習データの特徴埋め込み（平均・共分散）から精度行列を推定（Ledoit–Wolf など）し、距離をスコア化。
   - 計算用モジュール: `anomaly_detectors/mahalanobis.py`
     - `fit_mahalanobis(train_loader, backbone, feature_node=..., ...)` 学習用正常画像から平均ベクトル・共分散（精度行列）を推定。
     - `all_mahalanobis_scores(model_state, loader)` 任意のデータに対しマハラノビス距離を一括計算。
@@ -117,6 +131,3 @@ results/dev/<timestamp>/
 
 - VRAM 不足で落ちる
   - `DEFAULT_BATCH_SIZE` や PaDiM の `d` を下げてください。`NUM_WORKERS` も環境に合わせて調整可能です。
-
-
-
