@@ -1,7 +1,7 @@
 # 実験レポート — MVTec 画像異常検知
 
 ## 目的と前提
-- 目的: 画像データの異常検知タスクにおいて、複数手法（Mahalanobis 距離法 / PaDiM）および複数バックボーン（ResNet18 / EfficientNet‑B0）で性能を比較する。
+- 目的: 画像データの異常検知タスクにおいて、2つの手法（Mahalanobis 距離法 / PaDiM）および2つのバックボーン（ResNet18 / EfficientNet‑B0）で性能を比較する。
 - 前提: 異常データが得られない、あるいは正常に比べて極めて少数、または未知の異常（観測済みのどの異常にも分類不能）が発生する状況を想定。よって、学習には学習用正常データのみを使用し、正常データの分布推定（共分散行列など）を行い、正常・異常の閾値設定は Out Of Fold（OOF）の異常スコアに基づいて行った。
 
 ## データと実験条件
@@ -13,8 +13,8 @@
   - K‑Fold で学習用データ（train/good）を分割し、フォールドごとに学習と異常スコアを取得。
   - 全フォールドのOOF異常スコアを結合し正規化。その 99% 分位点を正常・異常の閾値 `z_threshold` として決定。
   - 全 train/good で最終モデルを学習し、テストデータ（test）でAUCおよびF1スコアを算出。
-  - 結果保存先: `results/dev/<timestamp>/<backbone>/<category>/<method>/`
-  - 集計: `results/dev/<timestamp>/sweep_summary.csv`
+  - 結果保存先: `results/<timestamp>/<backbone>/<category>/<method>/`
+  - 集計: `results/<timestamp>/sweep_summary.csv`
 
 ## 手法の要点
 ### 異常スコア算出アルゴリズム
@@ -91,19 +91,26 @@
 ## 考察
 - PaDiM は4つのカテゴリ（carpet / leather / tile / bottle） で精度が高く、特に EfficientNet‑B0 と組み合わせた場合に AUC / F1 とも高い値となった。
 - cable / pill では上記4カテゴリに比べ精度が低い。また、手法としても Mahalanobis距離法の方が優位という違いもあった。
-- cable では、異常では無いが正常とは異なるパターンがあった場合に異常スコアが高くなりやすく、 pill では、背景や錠剤の模様の違いが異常スコアに影響しやすい傾向があった。いずれも、本来、検出したい異常とは異なる状態を異常と判定してしまうケースが多かった。それぞれのカテゴリに合わせ、バックボーンや特徴抽出層の選択、背景の除外などの前処理など、チューニングが必要と考えられる。
-- `z_threshold` は概ね 3〜4.7 の範囲。PaDiM はカテゴリにより学習異常スコアの分散が大きく、z 化による正規化はしているものの、外れ値の影響を被りやすいカテゴリがある。
-- 2つの手法間でスコアのヒストグラムを比較すると、両手法の違いが表れていた。 Mahalanobis では学習データ（train）と学習外データ（valとテストデータのgood）のスコア分布には大きな違いがあるが、PaDiM は両データの分布が近い傾向。これは、Mahalanobis距離法は画像全体の特徴を1つの多変量正規分布でモデル化するのに対し、PaDiMはパッチごとに複数の分布をモデル化し、スコアの統計量（今回は最大値）を計算するため、分布が安定したと推測される。
+- PaDiMのヒートマップを見ると、cable では、異常の部分のスコアが低く、正常な部分の異常スコアが高い場合が多く発生していた（下図・バックボーンresnet18）。正常画像と異常画像を分離できる特徴量を抽出できていない可能性があり、バックボーンおよび特徴量抽出層の再検討が必要と考えられる。
+![ヒートマップ・cable: Mahalanobis × resnet18](./results/202510121148/resnet18/cable/PaDiM/final_heatmaps/sample_00132.png "ヒストグラム・cable: Mahalanobis × ResNet18")
+![ヒートマップ・cable: Mahalanobis × resnet18](./results/202510121148/resnet18/cable/PaDiM/final_heatmaps/sample_00116.png "ヒストグラム・cable: Mahalanobis × ResNet18")
+- pill では、背景や錠剤の細かな模様の違いが異常スコアに影響しやすい傾向があった。背景を除去する前処理や、細かい模様のパターンの違いは許容するような特徴量抽出が必要と考えられる。
+![ヒートマップ・pill: Mahalanobis × resnet18](./results/202510121148/resnet18/pill/PaDiM/final_heatmaps/sample_00035.png "ヒストグラム・pill: Mahalanobis × ResNet18")
+![ヒートマップ・pill: Mahalanobis × resnet18](./results/202510121148/resnet18/pill/PaDiM/final_heatmaps/sample_00121.png "ヒストグラム・pill: Mahalanobis × ResNet18")
+- AUCが高くてもF1が低い場合がある。これは、閾値設定が不適切である可能性があり、OOFの分位点以外の方法（POTやYouden指標など）も検討する必要がある。
+- 2つの手法間でスコアのヒストグラムを比較すると、両手法の違いが表れていた（以下はカテゴリleather、バックボーンefficientnet_b0の例）。 Mahalanobis では学習データ（train）と学習外データ（valとテストデータのgood）のスコア分布には大きな違いがあるが、PaDiM は両データの分布が近い傾向。これは、Mahalanobis距離法は画像全体の特徴を1つの多変量正規分布でモデル化するのに対し、PaDiMはパッチごとに複数の分布をモデル化し、スコアの統計量（今回は最大値）を計算するため、分布が安定したと推測される。
 ![ヒストグラム・leather: Mahalanobis × EfficientNet‑B0](./results/202510121148/efficientnet_b0/leather/MD/fold_0_hist.png "ヒストグラム・leather: Mahalanobis × EfficientNet‑B0")
 ![ヒストグラム・leather: PaDiM × EfficientNet‑B0](./results/202510121148/efficientnet_b0/leather/PaDiM/fold_0_hist.png "ヒストグラム・leather: PaDiM × EfficientNet‑B0")
 
 ## 改善案
 - カテゴリ別のチューニング（cable / pill 重点）
-  - 層選択を浅めに（エッジ・細部強調）、`d` を縮小して冗長次元を抑制
-  - 画像スコア集約（max / 上位パーセンタイル）をカテゴリ特性に合わせて調整
+  - バックボーンおよび特徴量抽出層の再検討
+  - PaDiMの異常スコア算出を最大値ではなく、分位点などに変更
+  - 画像前処理（背景除去、ノイズ除去など）
+  - 疑似的な異常データを使い、特徴量抽出層や閾値をチューニング
 - 閾値設定の改善
-  - OOF 分位点（97/98/99%）のカテゴリ別スイープ
-  - EVT（POT）や Youden 指標、Conformal 分位点など、低 FPR 制御・汎化性重視のしきい値設計
+  - 分位点算出で仮定していた分布を正規分布からカイ二乗分布や極値分布に変更
+  - 少数の異常データを使い、閾値をチューニング
 
 
 ## 参考文献
