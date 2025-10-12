@@ -1,42 +1,38 @@
 # 画像異常検知ポートフォリオ（MVTec / Mahalanobis・PaDiM）
 
-本リポジトリは、製造業などの外観検査を想定した画像異常検知の再現性重視ポートフォリオです。開発用ノートブックでパイプライン設計を確定し、その固定設定を評価用ノートブックで複数カテゴリに一括適用します。主な対象手法は Mahalanobis 距離ベース法と PaDiM です。
+本リポジトリは、製造業などの外観検査を想定した画像異常検知実験を実施したポートフォリオです。複数バックボーン × 複数カテゴリ × 複数手法（Mahalanobis / PaDiM）のスイープ実験を実行しました。
 
-Executive Summary:
-- 設計確定は `01_experiments_dev.ipynb`、評価は `02_evaluation_report.ipynb` で一発実行。
-- 固定パイプラインは `assets/fixed_pipeline.json` に保存し、リークを防止。
-- 指標・図表は `runs/` および `assets/figs/` に保存し、再現可能に管理。
+## 概要
+- `experiment.ipynb`：実験の実行と結果の保存を行うノートブック。
+- 結果は `results/<timestamp>/<backbone>/<category>/<method>/` に保存。
+- PaDiM ヒートマップは各カテゴリから「good×10 + 異常×10」を原画像と横並びでPNG保存。
+- バックボーン比較用のスロープチャート等、結果の可視化も実行。
+- `REPORT.md`：実験レポート（目的、手法、結果、考察、改善案など）。
 
 
-**目次**
+## 目次
 - リポジトリ構成
 - セットアップ（uv / pip）
-- データ準備（MVTec AD）
-- 使い方（開発→固定→評価）
-- 成果物とレポート
-- 再現性とルール
+- データ準備（anomalib）
+- 実行方法（experiment.ipynb）
+- 出力物（フォルダ構成・ファイル）
+- 実装の要点
 - トラブルシュート
-- 謝辞
+- 参考文献
 
 
 ## リポジトリ構成
 
 ```
 .
-├── 01_experiments_dev.ipynb      # devカテゴリのみで設計確定（EDA/試行錯誤）
-├── 02_evaluation_report.ipynb    # 固定設定でevalカテゴリを一発評価
-├── assets/
-│   ├── figs/                     # 代表図（小容量のみ格納）
-│   └── fixed_pipeline.json       # ← 01で出力（無ければ02は実行しない想定）
-├── runs/                         # 02の評価結果（metrics.json など）
-├── datasets/MVTecAD/             # 例：既存のMVTec配置（任意）
-├── MVtec_dataset/                # 例：既存のMVTec配置（任意）
-├── pyproject.toml                # 依存関係（anomalib, torch ほか）
-└── uv.lock                       # uv 用ロックファイル
+├── experiment.ipynb                # 実験実行用ノートブック
+├── anomaly_detectors/              # 手法の実装（Mahalanobis / PaDiM ）
+├── datasets/MVTecAD/               # 例：既存のMVTec配置（任意、git管理外）
+└── results/                        # 実行結果（時刻別に保存）
 ```
 
 
-## セットアップ（uv / pip）
+## セットアップ
 
 前提:
 - Python `>= 3.12`
@@ -45,104 +41,93 @@ Executive Summary:
 ### 方法A: uv（推奨）
 
 ```
-# uv が未インストールの場合（任意）
-pip install uv
-
 # 仮想環境の作成と依存解決（.venv を自動管理）
 uv sync
 
 # Jupyter を起動（必要に応じて）
 uvx jupyter lab  # または: uvx jupyter notebook
 ```
+uv sync が pyproject.toml を参照して依存をインストールします。
 
-### 方法B: pip / venv
+### 方法B: venv + pip
 
 ```
+# 仮想環境作成
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# 有効化（Unix / macOS）
+source .venv/bin/activate
+
+# 有効化（Windows PowerShell）
+.venv\Scripts\Activate.ps1
+
+# pip 更新
 python -m pip install -U pip
+
+# パッケージインストール（プロジェクト依存）
 pip install -e .           # pyproject.toml の依存を解決
 
-# Jupyter が未導入なら
-pip install jupyterlab  # または: jupyter
+# PyTorch（GPU利用時は環境に合ったビルドを選択）
+pip install torch torchvision
+
+# その他依存（プロジェクトで指定のバージョンを使用）
+pip install anomalib matplotlib nbformat numpy==1.26.* pandas<2.3 plotly umap-learn scikit-learn pillow
+
+# Jupyter が必要なら
+pip install jupyterlab   # または: pip install jupyter
 ```
 
+## データ準備（anomalib）
 
-## データ準備（MVTec AD）
+- `experiment.ipynb` には anomalib を用いたデータダウンロードセル（存在しなければ取得）が含まれています。
+- 既にローカルにデータがある場合は、環境変数 `MVTEC_ROOT` でルートを指定するか、先頭セルの設定を変更してください。
+- 既存配置の例: `datasets/MVTecAD/` 
 
-- 基本方針: データ取得は anomalib の機能を用いてノートブック内から行います（直リンクや手動DLは推奨しません）。
-- 既にローカルにデータがある場合は、環境変数 `MVTEC_ROOT` でルートを指定するか、ノートブック先頭セルの設定でパスを変更してください。
-- 既存配置の例: `datasets/MVTecAD/` または `MVtec_dataset/`（いずれも本リポジトリに含めないことを推奨）。
 
-ノートブック側の想定処理（擬似コード）:
+## 実行方法（experiment.ipynb）
 
-```python
-from pathlib import Path
-import os
+1. ノートブックを開き、先頭の「共通設定」セルを実行（`device`・`PIN_MEMORY` などが自動設定）。
+2. 「スイープ設定と実行」セルで `TARGET_BACKBONES` と `TARGET_CATEGORIES` を編集。
+3. 実行すると以下を自動で行います。
+   - K-Fold CV（train/good のみ）→ foldごとにヒストグラム保存。
+   - Out Of Fold（OOF）の異常スコアから z 空間で 99% 分位点（z_threshold）を決定。
+   - 全学習データ（train/good）で最終モデルをfitし、testを評価（AUC/F1）。
+   - PaDiM は、異常スコアのヒートマップも作成し、PNGを保存。
+   - すべての結果を `results/dev/<timestamp>/...` に保存し、`sweep_summary.csv` を生成。
+   - バックボーン間の比較のため、スロープグラフを表示。
 
-# 既存ならそのまま利用。未存在なら anomalib でダウンロード/展開。
-MVTEC_ROOT = Path(os.environ.get("MVTEC_ROOT", "datasets/MVTecAD"))
-MVTEC_ROOT.mkdir(parents=True, exist_ok=True)
 
-# 例: anomalib のデータユーティリティ/Datamodule等で download=True を利用
-# from anomalib.data import MVTec
-# _ = MVTec(root=str(MVTEC_ROOT), category="leather", task="segmentation", download=True)
+## 出力物（フォルダ構成・ファイル）
+
+```
+results/<timestamp>/
+├── sweep_summary.csv                         # バックボーン×カテゴリ×手法の集計（AUC/F1, z_threshold 等）
+└── <backbone>/<category>/<method>/
+    ├── summary.csv                           # CV 各foldのメトリクス
+    ├── fold_?_hist.png                       # スコア分布ヒストグラム
+    └── final_heatmaps/                       # PaDiM: 原画像+熱図の横並びPNG（good×2, 異常×3）
 ```
 
+## 実装の要点
 
-## 使い方（開発→固定→評価）
-
-1) 開発（設計確定）: `01_experiments_dev.ipynb`
-- devカテゴリ（例: `carpet`）のみを用いて、特徴抽出層やハイパラを試行。
-- Mahalanobis：平均・共分散の推定（例：Ledoit–Wolf 縮小）と画像スコア化。
-- PaDiM：使用層とチャネルサブサンプル `d` の選定。
-- 閾値ルール：devのtestを用いて「画像レベル FPR = 1%」となるスコアを決定。
-- 決定内容を `assets/fixed_pipeline.json` に保存（ノートブックが出力）。
-
-2) 固定設定で評価: `02_evaluation_report.ipynb`
-- 1) の JSON を読み込み、evalカテゴリ（例: `leather`, `tile`）に対して、`train/good` のみで fit → `test` を一度だけ評価。
-- `runs/eval/**/metrics.json` に AUROC/AUPRC/F1 など、`assets/figs/**` に図を保存。
-
-
-## 成果物とレポート
-
-- 設定: `assets/fixed_pipeline.json`
-- 指標: `runs/eval/<category>/<method>/metrics.json`（例：AUROC, AUPRC, F1）
-- 図表: `assets/figs/`（ROC/PR、失敗例ギャラリー等）
-
-README への反映テンプレート（例）:
-
-| Category | Method       | AUROC | AUPRC | F1 (FPR=1%) |
-|----------|--------------|------:|------:|------------:|
-| leather  | Mahalanobis  | 0.98  | 0.97  | 0.82        |
-| leather  | PaDiM        | 0.99  | 0.98  | 0.85        |
-| tile     | Mahalanobis  | 0.97  | 0.96  | 0.80        |
-| tile     | PaDiM        | 0.98  | 0.97  | 0.83        |
-
-（実数値は `runs/**/metrics.json` の結果で更新してください）
-
-
-## 再現性とルール
-
-- 固定設定での評価時にパラメータ変更を行わない（データリーク防止）。
-- 閾値は dev の test を起点に「画像FPR=1%」を満たすルール/値で固定。
-- 乱数 `seed` は少なくとも複数（例: 0,1,2）で平均化。可能ならCIも併記。
+- Mahalanobis距離法：学習データの特徴埋め込み（平均・共分散）から精度行列を推定（Ledoit–Wolf など）し、距離をスコア化。
+  - 計算用モジュール: `anomaly_detectors/mahalanobis.py`
+    - `fit_mahalanobis(train_loader, backbone, feature_node=..., ...)` 学習用正常画像から平均ベクトル・共分散（精度行列）を推定。
+    - `all_mahalanobis_scores(model_state, loader)` 任意のデータに対しマハラノビス距離を一括計算。
+- PaDiM：指定層の特徴をサブサンプル（`d`）して多変量正規分布を仮定、画素スコアを画像スコアへ集約。
+  - 計算用モジュール: `anomaly_detectors/padim.py`
+    - `fit_padim(train_loader, backbone, layers=[...], d=...)` 学習用正常画像から指定層のパッチ分布を学習。
+    - `all_padim_scores(model_state, loader, return_maps=False)` 画像の異常度スコア（必要に応じてヒートマップ）を取得。
+- 閾値設計：
+  - CV の各fold val（正常のみ）スコアを OOF として集約し、z空間に正規化して 99% 分位点 `z_threshold` を決定。
+  - 最終モデルでも学習正常スコア（mu_final, sigma_final）で z 化し、`z > z_threshold` を異常判定に適用。
+- DataLoader：`pin_memory` は GPU のとき True / CPU のとき False を自動設定。
 
 
 ## トラブルシュート
 
-- PyTorch のインストールに失敗する: GPU/OSに適したホイールを選択してください。`pip install torch torchvision` の代わりに公式推奨コマンドを使用。
-- ノートブックで MVTec のパスが見つからない: `MVTEC_ROOT` を設定、または先頭セルのパス設定を修正。
-- 大容量成果物の管理: 画像は `assets/figs/` に小容量で保存し、巨大ファイルは追跡しない方針。
+- anomalib が見つからない / ダウンロードに失敗する
+  - ノートブックのデータ取得セルは anomalib の有無を判定して実行します。事前に `pip install anomalib` し、`MVTEC_ROOT` の書き込み権限をご確認ください。
 
-
-## 謝辞
-
-- 本実装は [anomalib](https://github.com/openvinotoolkit/anomalib) と MVTec AD データセットに深く依拠しています。素晴らしいコミュニティと研究に感謝します。
-
-
----
-
-補足（エージェント向け）:
-- `assets/fixed_pipeline.json` が無い場合は評価（02）を実行せず、先に開発（01）を完了してください。
-- 返答・コメントは日本語推奨。データ取得は anomalib 経由を原則とします。
+- VRAM 不足で落ちる
+  - `DEFAULT_BATCH_SIZE` や PaDiM の `d` を下げてください。`NUM_WORKERS` も環境に合わせて調整可能です。
